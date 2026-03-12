@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -16,7 +17,7 @@ func (p *Plugin) initRouter() *mux.Router {
 
 	apiRouter := router.PathPrefix("/api/v1").Subrouter()
 
-	apiRouter.HandleFunc("/hello", p.HelloWorld).Methods(http.MethodGet)
+	apiRouter.HandleFunc("/trending", p.getTrendingHandler).Methods(http.MethodGet)
 
 	return router
 }
@@ -39,9 +40,14 @@ func (p *Plugin) MattermostAuthorizationRequired(next http.Handler) http.Handler
 	})
 }
 
-func (p *Plugin) HelloWorld(w http.ResponseWriter, r *http.Request) {
-	if _, err := w.Write([]byte("Hello, world!")); err != nil {
-		p.API.LogError("Failed to write response", "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+// getTrendingHandler returns the current list of trending threads as JSON.
+func (p *Plugin) getTrendingHandler(w http.ResponseWriter, r *http.Request) {
+	threads := p.getTrendingThreads()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(threads); err != nil {
+		p.API.LogError("Failed to encode trending threads response", "error", err.Error())
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
 	}
 }

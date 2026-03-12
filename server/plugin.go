@@ -12,8 +12,8 @@ import (
 	"github.com/mattermost/mattermost/server/public/pluginapi/cluster"
 	"github.com/pkg/errors"
 
-	"github.com/mattermost/mattermost-plugin-starter-template/server/command"
-	"github.com/mattermost/mattermost-plugin-starter-template/server/store/kvstore"
+	"github.com/mattermost/mattermost-plugin-trending-threads/server/command"
+	"github.com/mattermost/mattermost-plugin-trending-threads/server/store/kvstore"
 )
 
 // Plugin implements the interface expected by the Mattermost server to communicate between the server and plugin processes.
@@ -40,6 +40,14 @@ type Plugin struct {
 	// configuration is the active plugin configuration. Consult getConfiguration and
 	// setConfiguration for usage.
 	configuration *configuration
+
+	// trendingThreads holds the cached list of trending threads
+	trendingThreads []ThreadResult
+	trendingMutex   sync.RWMutex
+
+	// refreshTicker controls the background refresh interval
+	refreshTicker *time.Ticker
+	refreshDone   chan bool
 }
 
 // OnActivate is invoked when the plugin is activated. If an error is returned, the plugin will be deactivated.
@@ -51,6 +59,12 @@ func (p *Plugin) OnActivate() error {
 	p.commandClient = command.NewCommandHandler(p.client)
 
 	p.router = p.initRouter()
+
+	// Initialize trending threads cache
+	p.trendingThreads = []ThreadResult{}
+
+	// Start the refresh ticker for trending threads
+	p.startRefreshTicker()
 
 	job, err := cluster.Schedule(
 		p.API,
@@ -69,6 +83,9 @@ func (p *Plugin) OnActivate() error {
 
 // OnDeactivate is invoked when the plugin is deactivated.
 func (p *Plugin) OnDeactivate() error {
+	// Stop the trending threads refresh ticker
+	p.stopRefreshTicker()
+
 	if p.backgroundJob != nil {
 		if err := p.backgroundJob.Close(); err != nil {
 			p.API.LogError("Failed to close background job", "err", err)

@@ -17,7 +17,16 @@ import (
 //
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
-type configuration struct{}
+type configuration struct {
+	Scope                  string
+	ChannelIDs             string
+	TimeWindowHours        int
+	MaxThreads             int
+	RefreshIntervalSeconds int
+	ReplyWeight            float64
+	ReactionWeight         float64
+	DecayRate              float64
+}
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if
 // your configuration has reference types.
@@ -76,7 +85,15 @@ func (p *Plugin) OnConfigurationChange() error {
 		return errors.Wrap(err, "failed to load plugin configuration")
 	}
 
+	oldConfig := p.getConfiguration()
 	p.setConfiguration(configuration)
+
+	// Restart the refresh ticker if the interval changed
+	if oldConfig != nil && oldConfig.RefreshIntervalSeconds != configuration.RefreshIntervalSeconds {
+		p.API.LogInfo("Refresh interval changed, restarting ticker")
+		p.stopRefreshTicker()
+		p.startRefreshTicker()
+	}
 
 	return nil
 }

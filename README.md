@@ -1,223 +1,148 @@
-# Plugin Starter Template
+# Mattermost Trending Threads Plugin
 
-[![Build Status](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/ci.yml/badge.svg)](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/ci.yml)
-[![E2E Status](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/e2e.yml/badge.svg)](https://github.com/mattermost/mattermost-plugin-starter-template/actions/workflows/e2e.yml)
+A Mattermost plugin that surfaces the most active threads in a persistent sidebar section, helping teams discover ongoing conversations.
 
-This plugin serves as a starting point for writing a Mattermost plugin. Feel free to base your own plugin off this repository.
+![Trending Threads](https://img.shields.io/badge/mattermost-10.11.8+-blue.svg)
+![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)
 
-To learn more about plugins, see [our plugin documentation](https://developers.mattermost.com/extend/plugins/).
+## Features
 
-This template requires node v16 and npm v8. You can download and install nvm to manage your node versions by following the instructions [here](https://github.com/nvm-sh/nvm). Once you've setup the project simply run `nvm i` within the root folder to use the suggested version of node.
+- **🔥 Trending Sidebar Section**: Always-visible section showing top N most active threads
+- **Smart Scoring Algorithm**: Exponential recency decay with configurable weights for replies and reactions
+- **Flexible Scope**: Monitor all public channels or specific channels only
+- **Configurable Refresh**: Automatic background updates on a configurable interval
+- **One-Click Thread Access**: Opens threads natively in Mattermost's thread viewer
+- **Theme Integration**: Matches your Mattermost theme automatically
 
-## Getting Started
-Use GitHub's template feature to make a copy of this repository by clicking the "Use this template" button.
+## How It Works
 
-Alternatively shallow clone the repository matching your plugin name:
+The plugin calculates a trending score for each thread based on:
+
 ```
-git clone --depth 1 https://github.com/mattermost/mattermost-plugin-starter-template com.example.my-plugin
-```
-
-Note that this project uses [Go modules](https://github.com/golang/go/wiki/Modules). Be sure to locate the project outside of `$GOPATH`.
-
-Edit the following files:
-1. `plugin.json` with your `id`, `name`, and `description`:
-```json
-{
-    "id": "com.example.my-plugin",
-    "name": "My Plugin",
-    "description": "A plugin to enhance Mattermost."
-}
+score = (replyCount × replyWeight + reactionCount × reactionWeight) × recencyMultiplier
 ```
 
-2. `go.mod` with your Go module path, following the `<hosting-site>/<repository>/<module>` convention:
-```
-module github.com/example/my-plugin
-```
+Where:
+- **Reply Weight** (default 2.0): Values discussion-heavy threads
+- **Reaction Weight** (default 1.0): Values quick engagement
+- **Recency Multiplier**: Exponential decay (e^(-decayRate × hoursInactive))
+- **Decay Rate** (default 0.1): Controls recency bias (higher = favor recent activity)
 
-3. Replace all occurrences of `github.com/mattermost/mattermost-plugin-starter-template` in the codebase with your Go module path:
+## Installation
+
+### Requirements
+
+- Mattermost Server 10.11.8+
+- Go 1.25+ (for building from source)
+- Node.js 16+ and npm (for building from source)
+
+### From Release
+
+1. Download the latest `.tar.gz` from [Releases](../../releases)
+2. Go to **System Console → Plugin Management**
+3. Upload the `.tar.gz` file
+4. Enable the plugin
+
+### From Source
+
 ```bash
-sed -i '' 's|github.com/mattermost/mattermost-plugin-starter-template|github.com/example/my-plugin|g' server/*.go
+git clone https://github.com/YOUR_USERNAME/mattermost-plugin-trending-threads.git
+cd mattermost-plugin-trending-threads
+make dist
+
+# Upload dist/com.mattermost.trending-threads-*.tar.gz to your Mattermost server
 ```
 
-4. Replace `.golangci.yml` `local-prefixes` attribute with your Go module path:
-```yml
-linters-settings:
-  # [...]
-  goimports:
-    local-prefixes: github.com/example/my-plugin
-```
+## Configuration
 
-5. Build your plugin:
-```
-make
-```
+All settings are available in **System Console → Plugins → Trending Threads** or in `config.json`:
 
-This will produce a single plugin file (with support for multiple architectures) for upload to your Mattermost server:
+### Basic Settings
 
-```
-dist/com.example.my-plugin.tar.gz
-```
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Scope** | `server` | `server` = all public channels, `channels` = specific channels only |
+| **Channel IDs** | (empty) | Comma-separated channel IDs when Scope = `channels` |
+| **Time Window (hours)** | `24` | How far back to look for activity |
+| **Max Threads** | `3` | Number of threads to display in sidebar |
+| **Refresh Interval (seconds)** | `300` | How often to recalculate trending threads |
+
+### Advanced Settings (Scoring Weights)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Reply Weight** | `2.0` | Weight factor for replies in score calculation |
+| **Reaction Weight** | `1.0` | Weight factor for reactions in score calculation |
+| **Decay Rate** | `0.1` | Exponential decay rate for recency weighting |
+
+## Performance Considerations
+
+### Server Size Guidelines
+
+| Server Size | Recommended Scope | Refresh Interval | Notes |
+|-------------|-------------------|------------------|-------|
+| Small (<20 channels) | `server` | 300s | Minimal impact |
+| Medium (20-100 channels) | `channels` (10-20) | 300-600s | Monitor initially |
+| Large (>100 channels) | `channels` (5-10) | 600s | Start conservatively |
+| Enterprise (>500 channels) | `channels` (3-5) | 600-900s | Test on staging first |
+
+**Recommendation for large servers:** Start with `channels` scope and monitor performance before expanding.
+
+## Troubleshooting
+
+### Sidebar doesn't appear
+
+- Verify plugin is enabled in System Console
+- Check browser console (F12) for JavaScript errors
+- Try refreshing the page
+- Verify Mattermost version is 10.11.8+
+
+### No threads appear
+
+- Check if threads exist with replies/reactions in the configured time window
+- Increase `TimeWindowHours` to 48 or 72
+- Check server logs: `tail -f /opt/mattermost/logs/mattermost.log | grep trending`
 
 ## Development
 
-To avoid having to manually install your plugin, build and deploy your plugin using one of the following options. In order for the below options to work, you must first enable plugin uploads via your config.json or API and restart Mattermost.
+### Build
 
-```json
-    "PluginSettings" : {
-        ...
-        "EnableUploads" : true
-    }
-```
-
-### Development guidance
-
-1. Fewer packages is better: default to the main package unless there's good reason for a new package.
-
-2. Coupling implies same package: don't jump through hoops to break apart code that's naturally coupled.
-
-3. New package for a new interface: a classic example is the sqlstore with layers for monitoring performance, caching and mocking.
-
-4. New package for upstream integration: a discrete client package for interfacing with a 3rd party is often a great place to break out into a new package
-
-### Modifying the server boilerplate
-
-The server code comes with some boilerplate for creating an api, using slash commands, accessing the kvstore and using the cluster package for jobs.
-
-#### Api
-
-api.go implements the ServeHTTP hook which allows the plugin to implement the http.Handler interface. Requests destined for the `/plugins/{id}` path will be routed to the plugin. This file also contains a sample `HelloWorld` endpoint that is tested in plugin_test.go.
-
-#### Command package
-
-This package contains the boilerplate for adding a slash command and an instance of it is created in the `OnActivate` hook in plugin.go. If you don't need it you can delete the package and remove any reference to `commandClient` in plugin.go. The package also contains an example of how to create a mock for testing.
-
-#### KVStore package
-
-This is a central place for you to access the KVStore methods that are available in the `pluginapi.Client`. The package contains an interface for you to define your methods that will wrap the KVStore methods. An instance of the KVStore is created in the `OnActivate` hook.
-
-### Deploying with Local Mode
-
-If your Mattermost server is running locally, you can enable [local mode](https://docs.mattermost.com/administration/mmctl-cli-tool.html#local-mode) to streamline deploying your plugin. Edit your server configuration as follows:
-
-```json
-{
-    "ServiceSettings": {
-        ...
-        "EnableLocalMode": true,
-        "LocalModeSocketLocation": "/var/tmp/mattermost_local.socket"
-    },
-}
-```
-
-and then deploy your plugin:
-```
-make deploy
-```
-
-You may also customize the Unix socket path:
 ```bash
-export MM_LOCALSOCKETPATH=/var/tmp/alternate_local.socket
-make deploy
+make
 ```
 
-If developing a plugin with a webapp, watch for changes and deploy those automatically:
+### Lint
+
 ```bash
-export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_TOKEN=j44acwd8obn78cdcx7koid4jkr
-make watch
+make check-style
 ```
 
-### Deploying with credentials
+### Test
 
-Alternatively, you can authenticate with the server's API with credentials:
 ```bash
-export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_USERNAME=admin
-export MM_ADMIN_PASSWORD=password
-make deploy
+make test
 ```
 
-or with a [personal access token](https://docs.mattermost.com/developer/personal-access-tokens.html):
-```bash
-export MM_SERVICESETTINGS_SITEURL=http://localhost:8065
-export MM_ADMIN_TOKEN=j44acwd8obn78cdcx7koid4jkr
-make deploy
-```
+## Architecture
 
-### Releasing new versions
+### Backend (Go)
 
-The version of a plugin is determined at compile time, automatically populating a `version` field in the [plugin manifest](plugin.json):
-* If the current commit matches a tag, the version will match after stripping any leading `v`, e.g. `1.3.1`.
-* Otherwise, the version will combine the nearest tag with `git rev-parse --short HEAD`, e.g. `1.3.1+d06e53e1`.
-* If there is no version tag, an empty version will be combined with the short hash, e.g. `0.0.0+76081421`.
+- **`plugin.go`**: Plugin lifecycle and initialization
+- **`scorer.go`**: Thread scoring algorithm
+- **`refresh.go`**: Background refresh ticker and cache management
+- **`api.go`**: REST API endpoint
+- **`configuration.go`**: Configuration loading
 
-To disable this behaviour, manually populate and maintain the `version` field.
+### Frontend (React/TypeScript)
 
-## How to Release
+- **`index.tsx`**: Plugin registration
+- **`components/TrendingSidebar.tsx`**: Main sidebar component
+- **`components/TrendingSidebar.css`**: Styling
 
-To trigger a release, follow these steps:
+## License
 
-1. **For Patch Release:** Run the following command:
-    ```
-    make patch
-    ```
-   This will release a patch change.
+This project is licensed under the Apache License 2.0.
 
-2. **For Minor Release:** Run the following command:
-    ```
-    make minor
-    ```
-   This will release a minor change.
+## Acknowledgments
 
-3. **For Major Release:** Run the following command:
-    ```
-    make major
-    ```
-   This will release a major change.
-
-4. **For Patch Release Candidate (RC):** Run the following command:
-    ```
-    make patch-rc
-    ```
-   This will release a patch release candidate.
-
-5. **For Minor Release Candidate (RC):** Run the following command:
-    ```
-    make minor-rc
-    ```
-   This will release a minor release candidate.
-
-6. **For Major Release Candidate (RC):** Run the following command:
-    ```
-    make major-rc
-    ```
-   This will release a major release candidate.
-
-## Q&A
-
-### How do I make a server-only or web app-only plugin?
-
-Simply delete the `server` or `webapp` folders and remove the corresponding sections from `plugin.json`. The build scripts will skip the missing portions automatically.
-
-### How do I include assets in the plugin bundle?
-
-Place them into the `assets` directory. To use an asset at runtime, build the path to your asset and open as a regular file:
-
-```go
-bundlePath, err := p.API.GetBundlePath()
-if err != nil {
-    return errors.Wrap(err, "failed to get bundle path")
-}
-
-profileImage, err := ioutil.ReadFile(filepath.Join(bundlePath, "assets", "profile_image.png"))
-if err != nil {
-    return errors.Wrap(err, "failed to read profile image")
-}
-
-if appErr := p.API.SetProfileImage(userID, profileImage); appErr != nil {
-    return errors.Wrap(err, "failed to set profile image")
-}
-```
-
-### How do I build the plugin with unminified JavaScript?
-Setting the `MM_DEBUG` environment variable will invoke the debug builds. The simplist way to do this is to simply include this variable in your calls to `make` (e.g. `make dist MM_DEBUG=1`).
+Built on the [Mattermost Plugin Starter Template](https://github.com/mattermost/mattermost-plugin-starter-template)

@@ -1,11 +1,11 @@
 {
-    "id": "com.mattermost.plugin-starter-template",
-    "name": "Plugin Starter Template",
-    "description": "This plugin serves as a starting point for writing a Mattermost plugin.",
-    "homepage_url": "https://github.com/mattermost/mattermost-plugin-starter-template",
-    "support_url": "https://github.com/mattermost/mattermost-plugin-starter-template/issues",
-    "icon_path": "assets/starter-template-icon.svg",
-    "min_server_version": "6.2.1",
+    "id": "com.mattermost.trending-threads",
+    "name": "Trending Threads",
+    "description": "Displays the most active threads in a dedicated sidebar section based on recency-weighted activity scores.",
+    "homepage_url": "https://github.com/mattermost/mattermost-plugin-trending-threads",
+    "support_url": "https://github.com/mattermost/mattermost-plugin-trending-threads/issues",
+    "icon_path": "assets/icon.svg",
+    "min_server_version": "10.11.8",
     "server": {
         "executables": {
             "linux-amd64": "server/dist/plugin-linux-amd64",
@@ -19,8 +19,82 @@
         "bundle_path": "webapp/dist/main.js"
     },
     "settings_schema": {
-        "header": "",
-        "footer": "",
-        "settings": []
+        "header": "Configure how trending threads are calculated and displayed.",
+        "footer": "Changes take effect after saving and may require up to one refresh interval to appear.",
+        "settings": [
+            {
+                "key": "Scope",
+                "display_name": "Scope",
+                "type": "dropdown",
+                "help_text": "Determines which channels are included in trending calculations. 'server' includes all public channels; 'channels' allows you to specify a comma-separated list of channel IDs.",
+                "default": "server",
+                "options": [
+                    {
+                        "display_name": "All public channels (server-wide)",
+                        "value": "server"
+                    },
+                    {
+                        "display_name": "Specific channels only",
+                        "value": "channels"
+                    }
+                ]
+            },
+            {
+                "key": "ChannelIDs",
+                "display_name": "Channel IDs (comma-separated)",
+                "type": "text",
+                "help_text": "Only used when Scope is set to 'channels'. Enter a comma-separated list of channel IDs (e.g., channelid1,channelid2,channelid3).",
+                "placeholder": "abc123def456,ghi789jkl012",
+                "default": ""
+            },
+            {
+                "key": "TimeWindowHours",
+                "display_name": "Time Window (hours)",
+                "type": "number",
+                "help_text": "How far back to look when calculating trending threads. Only threads with activity within this window are considered.",
+                "placeholder": "24",
+                "default": 24
+            },
+            {
+                "key": "MaxThreads",
+                "display_name": "Maximum Threads",
+                "type": "number",
+                "help_text": "The maximum number of trending threads to display in the sidebar.",
+                "placeholder": "3",
+                "default": 3
+            },
+            {
+                "key": "RefreshIntervalSeconds",
+                "display_name": "Refresh Interval (seconds)",
+                "type": "number",
+                "help_text": "How often the trending threads list is recalculated. Lower values provide more real-time updates but increase server load.",
+                "placeholder": "300",
+                "default": 300
+            },
+            {
+                "key": "ReplyWeight",
+                "display_name": "Reply Weight (Advanced)",
+                "type": "number",
+                "help_text": "Advanced: Weight factor for replies in the trending score calculation. Higher values favor discussion-heavy threads.",
+                "placeholder": "2.0",
+                "default": 2.0
+            },
+            {
+                "key": "ReactionWeight",
+                "display_name": "Reaction Weight (Advanced)",
+                "type": "number",
+                "help_text": "Advanced: Weight factor for reactions in the trending score calculation. Higher values favor reaction-heavy threads.",
+                "placeholder": "1.0",
+                "default": 1.0
+            },
+            {
+                "key": "DecayRate",
+                "display_name": "Decay Rate (Advanced)",
+                "type": "number",
+                "help_text": "Advanced: Exponential decay rate for recency weighting. Higher values (e.g., 0.2) favor more recent activity; lower values (e.g., 0.05) give more weight to total activity regardless of age.",
+                "placeholder": "0.1",
+                "default": 0.1
+            }
+        ]
     }
 }
