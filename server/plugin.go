@@ -48,6 +48,9 @@ type Plugin struct {
 	// refreshTicker controls the background refresh interval
 	refreshTicker *time.Ticker
 	refreshDone   chan bool
+
+	refreshDebounceMu    sync.Mutex
+	refreshDebounceTimer *time.Timer
 }
 
 // OnActivate is invoked when the plugin is activated. If an error is returned, the plugin will be deactivated.

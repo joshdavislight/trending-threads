@@ -18,14 +18,15 @@ import (
 // If you add non-reference types to your configuration struct, be sure to rewrite Clone as a deep
 // copy appropriate for your types.
 type configuration struct {
-	Scope                  string
-	ChannelIDs             string
-	TimeWindowHours        int
-	MaxThreads             int
-	RefreshIntervalSeconds int
-	ReplyWeight            float64
-	ReactionWeight         float64
-	DecayRate              float64
+	Scope                      string
+	ChannelIDs                 string
+	TimeWindowHours            int
+	MaxThreads                 int
+	RefreshIntervalSeconds     int
+	PostTriggerDebounceSeconds int
+	ReplyWeight                float64
+	ReactionWeight             float64
+	DecayRate                  float64
 }
 
 // Clone shallow copies the configuration. Your implementation may require a deep copy if

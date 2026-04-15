@@ -72,6 +72,14 @@
                 "default": 300
             },
             {
+                "key": "PostTriggerDebounceSeconds",
+                "display_name": "Post-trigger debounce (seconds)",
+                "type": "number",
+                "help_text": "After a new message is posted, wait this many seconds with no further qualifying posts before recalculating trending. Bursts of messages trigger one refresh. Set to 0 to use the default of 2 seconds.",
+                "placeholder": "2",
+                "default": 2
+            },
+            {
                 "key": "ReplyWeight",
                 "display_name": "Reply Weight (Advanced)",
                 "type": "number",

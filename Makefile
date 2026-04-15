@@ -43,7 +43,8 @@ endif
 
 # ====================================================================================
 # Used for semver bumping
-PROTECTED_BRANCH := master
+# Semver tag targets (patch, minor, major, *-rc) may only run on these default branches or release/*.
+PROTECTED_BRANCH := master main
 APP_NAME    := $(shell basename -s .git `git config --get remote.origin.url`)
 CURRENT_VERSION := $(strip $(shell git describe --abbrev=0 --tags))
 LATEST_RELEASE_TAG_RAW := $(shell git tag -l "v*" --sort=-v:refname | grep -v '\-rc' | head -n 1 || true)
@@ -60,7 +61,7 @@ RC := $(shell echo $(CURRENT_VERSION) | grep -oE 'rc[0-9]+' | sed 's/rc//')
 define check_protected_branch
 	@current_branch=$$(git rev-parse --abbrev-ref HEAD); \
 	if ! echo "$(PROTECTED_BRANCH)" | grep -wq "$$current_branch" && ! echo "$$current_branch" | grep -q "^release"; then \
-		echo "Error: Tagging is only allowed from $(PROTECTED_BRANCH) or release branches. You are on $$current_branch branch."; \
+		echo "Error: Tagging is only allowed from master, main, or release branches. You are on $$current_branch branch."; \
 		exit 1; \
 	fi
 endef

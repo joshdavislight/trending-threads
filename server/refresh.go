@@ -4,6 +4,15 @@ import (
 	"time"
 )
 
+// postTriggerDebounceDuration returns how long to wait after the last qualifying post
+// before running a post-triggered trending refresh. Non-positive values use 2 seconds.
+func postTriggerDebounceDuration(seconds int) time.Duration {
+	if seconds <= 0 {
+		return 2 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // startRefreshTicker starts the background ticker that refreshes trending threads.
 func (p *Plugin) startRefreshTicker() {
 	config := p.getConfiguration()
@@ -36,11 +45,39 @@ func (p *Plugin) startRefreshTicker() {
 
 // stopRefreshTicker stops the background refresh ticker.
 func (p *Plugin) stopRefreshTicker() {
+	p.stopDebouncedTrendingRefresh()
 	if p.refreshTicker != nil {
 		p.refreshTicker.Stop()
 		p.refreshDone <- true
 		p.API.LogInfo("Trending threads refresh ticker stopped")
 	}
+}
+
+// stopDebouncedTrendingRefresh cancels any pending post-triggered refresh.
+func (p *Plugin) stopDebouncedTrendingRefresh() {
+	p.refreshDebounceMu.Lock()
+	defer p.refreshDebounceMu.Unlock()
+	if p.refreshDebounceTimer != nil {
+		p.refreshDebounceTimer.Stop()
+		p.refreshDebounceTimer = nil
+	}
+}
+
+// scheduleDebouncedTrendingRefresh schedules a trending rescore shortly after posting activity.
+func (p *Plugin) scheduleDebouncedTrendingRefresh() {
+	debounce := postTriggerDebounceDuration(p.getConfiguration().PostTriggerDebounceSeconds)
+
+	p.refreshDebounceMu.Lock()
+	defer p.refreshDebounceMu.Unlock()
+	if p.refreshDebounceTimer != nil {
+		p.refreshDebounceTimer.Stop()
+	}
+	p.refreshDebounceTimer = time.AfterFunc(debounce, func() {
+		p.refreshTrendingThreads()
+		p.refreshDebounceMu.Lock()
+		p.refreshDebounceTimer = nil
+		p.refreshDebounceMu.Unlock()
+	})
 }
 
 // refreshTrendingThreads performs a single refresh of the trending threads cache.

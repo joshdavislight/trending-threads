@@ -15,6 +15,7 @@ type ThreadResult struct {
 	RootID        string  `json:"root_id"`
 	ChannelID     string  `json:"channel_id"`
 	ChannelName   string  `json:"channel_name"`
+	TeamName      string  `json:"team_name"`
 	Message       string  `json:"message"`
 	ReplyCount    int     `json:"reply_count"`
 	ReactionCount int     `json:"reaction_count"`
@@ -43,7 +44,7 @@ func (p *Plugin) ScoreThreads() ([]ThreadResult, error) {
 	}
 
 	// Calculate cutoff time based on TimeWindowHours
-	cutoffTime := time.Now().Add(-time.Duration(config.TimeWindowHours) * time.Hour).Unix() * 1000
+	cutoffTime := time.Now().Add(-time.Duration(config.TimeWindowHours)*time.Hour).Unix() * 1000
 
 	var allThreads []ThreadResult
 
@@ -112,12 +113,15 @@ func (p *Plugin) getChannelIDsToScan(config *configuration) ([]string, error) {
 
 // getThreadsFromChannel fetches and scores threads from a single channel.
 func (p *Plugin) getThreadsFromChannel(channelID string, cutoffTime int64, config *configuration) ([]ThreadResult, error) {
-	// Fetch recent posts from the channel
-	// ⚠️ Note: GetPostsForChannel returns posts in reverse chronological order (newest first).
-	// We use page=0 and perPage=60 to get the most recent 60 posts as a starting point.
-	postList, appErr := p.API.GetPostsForChannel(channelID, 0, 60)
+	// Use GetPostsSince(cutoffTime) so threads with recent *replies* are discoverable. Only scanning
+	// the latest N posts from GetPostsForChannel misses revived threads whose root is not in that
+	// page but had replies inside the time window.
+	postList, appErr := p.API.GetPostsSince(channelID, cutoffTime)
 	if appErr != nil {
-		return nil, errors.Wrap(appErr, "failed to get posts for channel")
+		return nil, errors.Wrap(appErr, "failed to get posts since cutoff")
+	}
+	if postList == nil || len(postList.Order) == 0 {
+		return []ThreadResult{}, nil
 	}
 
 	// Get channel info for the name
@@ -126,45 +130,78 @@ func (p *Plugin) getThreadsFromChannel(channelID string, cutoffTime int64, confi
 		p.API.LogWarn("Failed to get channel info", "channel_id", channelID, "error", appErr.Error())
 	}
 	channelName := ""
+	teamName := ""
 	if channel != nil {
 		channelName = channel.DisplayName
 		if channelName == "" {
 			channelName = channel.Name
 		}
+		if channel.TeamId != "" {
+			team, teamErr := p.API.GetTeam(channel.TeamId)
+			if teamErr != nil {
+				p.API.LogWarn("Failed to get team for channel", "channel_id", channelID, "team_id", channel.TeamId, "error", teamErr.Error())
+			} else if team != nil && team.Name != "" {
+				teamName = team.Name
+			}
+		}
+	}
+
+	seenRoot := make(map[string]bool)
+	latestInWindow := make(map[string]int64)
+	var rootIDs []string
+	for _, postID := range postList.Order {
+		post := postList.Posts[postID]
+		if post == nil {
+			continue
+		}
+		rootID := post.Id
+		if post.RootId != "" {
+			rootID = post.RootId
+		}
+		ts := post.CreateAt
+		if post.UpdateAt > ts {
+			ts = post.UpdateAt
+		}
+		if prev, ok := latestInWindow[rootID]; !ok || ts > prev {
+			latestInWindow[rootID] = ts
+		}
+		if seenRoot[rootID] {
+			continue
+		}
+		seenRoot[rootID] = true
+		rootIDs = append(rootIDs, rootID)
 	}
 
 	var threads []ThreadResult
-
-	// Process each post
-	for _, postID := range postList.Order {
-		post := postList.Posts[postID]
-
-		// Only consider root posts (threads)
-		if post.RootId != "" {
+	for _, rootID := range rootIDs {
+		post, postErr := p.API.GetPost(rootID)
+		if postErr != nil {
+			p.API.LogWarn("Failed to load root post for trending", "root_id", rootID, "error", postErr.Error())
+			continue
+		}
+		if post == nil || post.DeleteAt != 0 || post.RootId != "" || post.ChannelId != channelID {
 			continue
 		}
 
-		// Check if post has activity within the time window
 		lastActivityTime := post.CreateAt
 		if post.LastReplyAt > 0 {
-			lastActivityTime = post.LastReplyAt
+			lastActivityTime = maxInt64(lastActivityTime, post.LastReplyAt)
 		}
-
+		if ts, ok := latestInWindow[rootID]; ok {
+			lastActivityTime = maxInt64(lastActivityTime, ts)
+		}
 		if lastActivityTime < cutoffTime {
 			continue
 		}
 
-		// Get reaction count
-		reactions, appErr := p.API.GetReactions(postID)
+		reactions, reactErr := p.API.GetReactions(rootID)
 		reactionCount := 0
-		if appErr == nil {
+		if reactErr == nil {
 			reactionCount = len(reactions)
 		}
 
-		// Calculate score
 		score := p.calculateScore(post.ReplyCount, int64(reactionCount), lastActivityTime, config)
 
-		// Truncate message to 80 characters
 		message := post.Message
 		if len(message) > 80 {
 			message = message[:77] + "..."
@@ -175,15 +212,23 @@ func (p *Plugin) getThreadsFromChannel(channelID string, cutoffTime int64, confi
 			RootID:        post.RootId,
 			ChannelID:     post.ChannelId,
 			ChannelName:   channelName,
+			TeamName:      teamName,
 			Message:       message,
 			ReplyCount:    int(post.ReplyCount),
 			ReactionCount: reactionCount,
 			Score:         score,
-			LastReplyAt:   post.LastReplyAt,
+			LastReplyAt:   lastActivityTime,
 		})
 	}
 
 	return threads, nil
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // calculateScore computes the trending score for a thread using the configured formula.
