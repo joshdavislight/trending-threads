@@ -98,13 +98,17 @@ func main() {
 }
 
 func findManifest() (*model.Manifest, error) {
-	_, manifestFilePath, err := model.FindManifest(".")
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to find manifest in current working directory")
+	manifestFilePath := os.Getenv("MM_PLUGIN_MANIFEST_PATH")
+	var err error
+	if manifestFilePath == "" {
+		_, manifestFilePath, err = model.FindManifest(".")
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to find manifest in current working directory")
+		}
 	}
 	manifestFile, err := os.Open(manifestFilePath) //nolint:gosec
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open %s", manifestFilePath)
+		return nil, errors.Wrapf(err, "failed to open manifest file %s", manifestFilePath)
 	}
 	defer func() { _ = manifestFile.Close() }()
 

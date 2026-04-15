@@ -35,6 +35,7 @@ Where:
 - Mattermost Server 10.11.8+
 - Go 1.25+ (for building from source)
 - Node.js 16+ and npm (for building from source)
+- [jq](https://jqlang.org/) (only if you use `make dist-linux`)
 
 ### From Release
 
@@ -52,6 +53,30 @@ make dist
 
 # Upload dist/com.mattermost.trending-threads-*.tar.gz to your Mattermost server
 ```
+
+`make dist` produces a **multi-platform** bundle (Linux, macOS, and Windows server binaries). That artifact is larger but works regardless of where Mattermost runs.
+
+For **Linux servers only** (typical Debian or other Linux production hosts), use a smaller bundle with only `linux-amd64` and `linux-arm64` binaries:
+
+```bash
+make dist-linux
+```
+
+This requires **jq** on your PATH. The tarball name is still `dist/com.mattermost.trending-threads-*.tar.gz`.
+
+## Releases
+
+### Automated (GitHub Actions)
+
+Pushing a **version tag** matching `v*` (for example `v1.2.3`) runs [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds **`make dist-linux`** and attaches the resulting `.tar.gz` to a **GitHub Release** for that tag (published, not draft). Release notes are auto-generated from commits.
+
+The existing [`.github/workflows/ci.yml`](.github/workflows/ci.yml) workflow also runs on tag pushes (lint, test, and full `make dist` via Mattermost’s reusable plugin CI), in addition to this release job.
+
+### Manual
+
+1. Create and push an annotated tag at the commit you want to ship, for example `git tag -a v1.2.3 -m "Release v1.2.3"` and `git push origin v1.2.3`.
+2. Check out that tag locally, run **`make dist-linux`** (or `make dist` if you need the full multi-platform bundle).
+3. On GitHub: **Releases → Draft a new release**, select the tag, and upload the file from `dist/`.
 
 ## Configuration
 
@@ -110,6 +135,8 @@ All settings are available in **System Console → Plugins → Trending Threads*
 ```bash
 make
 ```
+
+This runs checks, tests, and **`make dist`** (full platform bundle). For day-to-day iteration you can use `make server`, `make webapp`, or `make dist` / **`make dist-linux`** alone; **`make dist-linux`** needs **jq** and restores the canonical `plugin.json`-derived manifests in the repo after bundling.
 
 ### Lint
 

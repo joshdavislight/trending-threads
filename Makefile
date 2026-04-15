@@ -1,6 +1,7 @@
 GO ?= $(shell command -v go 2> /dev/null)
 NPM ?= $(shell command -v npm 2> /dev/null)
 CURL ?= $(shell command -v curl 2> /dev/null)
+JQ ?= $(shell command -v jq 2>/dev/null)
 MM_DEBUG ?=
 GOPATH ?= $(shell go env GOPATH)
 GO_TEST_FLAGS ?= -race
@@ -227,6 +228,70 @@ else
 endif
 endif
 
+## Linux-only server binaries (for dist-linux / Debian-style deployments).
+.PHONY: server-linux
+server-linux:
+ifneq ($(HAS_SERVER),)
+ifneq ($(MM_DEBUG),)
+	$(info DEBUG mode is on; to disable, unset MM_DEBUG)
+endif
+	rm -rf server/dist;
+	mkdir -p server/dist;
+	cd server && env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-linux-amd64;
+	cd server && env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) $(GO_BUILD_GCFLAGS) -trimpath -o dist/plugin-linux-arm64;
+endif
+
+# Filter plugin.json to linux-* server executables only (requires jq).
+build/manifest.linux.json: plugin.json
+ifeq ($(JQ),)
+	$(error jq is required for Linux-only bundles: install jq (https://jqlang.org/) or use make dist for the full tarball)
+endif
+	mkdir -p build
+	$(JQ) '.server.executables |= with_entries(select(.key | test("^linux-")))' plugin.json > $@
+
+MM_LINUX_MANIFEST := $(abspath build/manifest.linux.json)
+
+## Apply manifest generated for Linux-only executables (used by dist-linux).
+.PHONY: apply-linux
+apply-linux: build/manifest.linux.json
+	MM_PLUGIN_MANIFEST_PATH="$(MM_LINUX_MANIFEST)" ./build/bin/manifest apply
+
+## Bundle plugin using Linux-only manifest (server/dist must already contain linux binaries only).
+.PHONY: bundle-linux
+bundle-linux:
+	rm -rf dist/
+	mkdir -p dist/$(PLUGIN_ID)
+	MM_PLUGIN_MANIFEST_PATH="$(MM_LINUX_MANIFEST)" ./build/bin/manifest dist
+ifneq ($(wildcard $(ASSETS_DIR)/.),)
+	cp -r $(ASSETS_DIR) dist/$(PLUGIN_ID)/
+endif
+ifneq ($(HAS_PUBLIC),)
+	cp -r public dist/$(PLUGIN_ID)/
+endif
+ifneq ($(HAS_SERVER),)
+	mkdir -p dist/$(PLUGIN_ID)/server
+	cp -r server/dist dist/$(PLUGIN_ID)/server/
+endif
+ifneq ($(HAS_WEBAPP),)
+	mkdir -p dist/$(PLUGIN_ID)/webapp
+	cp -r webapp/dist dist/$(PLUGIN_ID)/webapp/
+endif
+ifeq ($(shell uname),Darwin)
+	cd dist && tar --disable-copyfile -cvzf $(BUNDLE_NAME) $(PLUGIN_ID)
+else
+	cd dist && tar -cvzf $(BUNDLE_NAME) $(PLUGIN_ID)
+endif
+	@echo plugin built at: dist/$(BUNDLE_NAME)
+
+## Build and bundle for Linux servers only; restores canonical manifest in repo afterward.
+.PHONY: dist-linux
+dist-linux: apply-linux server-linux webapp bundle-linux apply
+ifeq ($(PLUGIN_ID),com.mattermost.plugin-starter-template)
+	$(warning WARNING)
+	$(warning You are building with the default plugin ID "com.mattermost.plugin-starter-template".)
+	$(warning Consider editing plugin.json to configure your project with a unique plugin ID.)
+endif
+
 ## Ensures NPM dependencies are installed without having to run this all the time.
 webapp/node_modules: $(wildcard webapp/package.json)
 ifneq ($(HAS_WEBAPP),)
@@ -420,6 +485,7 @@ ifneq ($(HAS_WEBAPP),)
 	rm -fr webapp/node_modules
 endif
 	rm -fr build/bin/
+	rm -f build/manifest.linux.json
 
 .PHONY: logs
 logs:

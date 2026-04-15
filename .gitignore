@@ -1,4 +1,5 @@
 bin/
+build/manifest.linux.json
 dist/
 webapp/src/manifest.ts
 server/manifest.go
